@@ -37,7 +37,7 @@ UKF::UKF() {
   std_a_ = 5;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 2;
+  std_yawdd_ = 3.1416/4;
 
   // Laser measurement noise standard deviation position1 in m
   std_laspx_ = 0.15;
@@ -70,6 +70,9 @@ UKF::UKF() {
   for (int i=1; i<2*n_aug_+1; i++) {  //2n+1 weights
     weights_(i) = 0.5/(n_aug_+lambda_);
   }
+
+  NIS_radar_ = 0.0;
+  NIS_laser_ = 0.0;
 }
 
 UKF::~UKF() {}
@@ -319,6 +322,10 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
   long x_size = x_.size();
   MatrixXd I = MatrixXd::Identity(x_size, x_size);
   P_ = (I - K * H) * P_;
+
+  // Calculate NIS to provide feedback for tuning the process noise parameters
+  NIS_laser_ = (y.transpose())*S.inverse()*(y);
+
 }
 
 /**
@@ -414,7 +421,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   //Kalman gain K;
   MatrixXd K = Tc * S.inverse();
 
-  //residual
+  //Calculate distance between measurement and mean prediction
   VectorXd z_err = z - z_pred;
 
   //angle normalization
@@ -424,4 +431,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   //update state mean and covariance matrix
   x_ = x_ + K * z_err;
   P_ = P_ - K*S*K.transpose();
+
+  // Calculate NIS to provide feedback for tuning the process noise parameters
+  NIS_radar_ = (z_err.transpose())*S.inverse()*z_err;
 }
