@@ -15,7 +15,7 @@ UKF::UKF() {
   is_initialized_ = false;
 
   // if this is false, laser measurements will be ignored (except during init)
-  use_laser_ = false;
+  use_laser_ = true;
 
   // if this is false, radar measurements will be ignored (except during init)
   use_radar_ = true;
@@ -32,11 +32,12 @@ UKF::UKF() {
   ///* Augmented state dimension
   n_aug_ = 7;
 
+  // TODO: optimize the state uncertainties
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 30;
+  std_a_ = 5;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 30;
+  std_yawdd_ = 2;
 
   // Laser measurement noise standard deviation position1 in m
   std_laspx_ = 0.15;
@@ -52,14 +53,6 @@ UKF::UKF() {
 
   // Radar measurement noise standard deviation radius change in m/s
   std_radrd_ = 0.3;
-
-  /**
-  TODO:
-
-  Complete the initialization. See ukf.h for other member properties.
-
-  Hint: one or more values initialized above might be wildly off...
-  */
 
   ///* predicted sigma points matrix
   Xsig_pred_= MatrixXd(5, 2 * n_aug_ + 1);
@@ -115,11 +108,11 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
       
       // TODO: Improve how to translate rho and theta initial uncertainty into
       //       px and py initial uncertainty.
-      P_ << std_radr_,         0,    0,    0,    0,
-                    0, std_radr_,    0,    0,    0,
-                    0,         0, 1000,    0,    0,
-                    0,         0,    0, 1000,    0,
-                    0,         0,    0,    0, 1000;
+      P_ << std_radr_,         0, 0, 0, 0,
+                    0, std_radr_, 0, 0, 0,
+                    0,         0, 1, 0, 0,
+                    0,         0, 0, 1, 0,
+                    0,         0, 0, 0, 1;
     }
     else if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
       /**
@@ -130,9 +123,9 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
 
       P_ << std_laspx_,          0,    0,    0,    0,
                      0, std_laspy_,    0,    0,    0,
-                     0,          0, 1000,    0,    0,
-                     0,          0,    0, 1000,    0,
-                     0,          0,    0,    0, 1000;
+                     0,          0,    1,    0,    0,
+                     0,          0,    0,    1,    0,
+                     0,          0,    0,    0,    1;
     }
 
     if (px_init < 0.0001 && py_init < 0.0001) return;
@@ -158,25 +151,20 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     return;
   }
 
-  std::cout << "x = " << x_ << std::endl;
-  std::cout << "P = " << P_ << std::endl;
-
-
   double delta_t = (meas_package.timestamp_ - time_us_) / 1000000.0;
   time_us_ = meas_package.timestamp_;
 
   if(delta_t > 0.0001){
-    std::cout << "delta_t = " << delta_t << std::endl;
     Prediction(delta_t);
   }
 
-  // if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
-  //   UpdateRadar(meas_package);
-  // }
+  if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
+    UpdateRadar(meas_package);
+  }
 
-  // if (meas_package.sensor_type_ == MeasurementPackage::LASER){
-  //   UpdateLidar(meas_package);
-  // }
+  if (meas_package.sensor_type_ == MeasurementPackage::LASER){
+    UpdateLidar(meas_package);
+  }
 }
 
 /**
@@ -185,10 +173,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
  * measurement and this one.
  */
 void UKF::Prediction(double delta_t) {
-  /**
-  Complete this function! Estimate the object's location. Modify the state
-  vector, x_. Predict sigma points, the state, and the state covariance matrix.
-  */
+  //TODO: NIS
 
   //create augmented mean vector
   VectorXd x_aug = VectorXd(7);
@@ -291,14 +276,49 @@ void UKF::Prediction(double delta_t) {
  * @param {MeasurementPackage} meas_package
  */
 void UKF::UpdateLidar(MeasurementPackage meas_package) {
-  /**
-  TODO:
+  //create matrix for sigma points in measurement space
+  int n_z = 2;
+  MatrixXd Zsig = MatrixXd(2, 2 * n_aug_ + 1);
 
-  Complete this function! Use lidar data to update the belief about the object's
-  position. Modify the state vector, x_, and covariance, P_.
+  //transform sigma points into measurement space
+  for (int i = 0; i < 2 * n_aug_ + 1; i++) {  //2n+1 simga points
+    // measurement model
+    Zsig(0,i) = Xsig_pred_(0,i); //px
+    Zsig(1,i) = Xsig_pred_(1,i); //py
+  }
 
-  You'll also need to calculate the lidar NIS.
-  */
+  //mean predicted measurement
+  VectorXd z_pred = VectorXd(2);
+  z_pred.fill(0.0);
+  for (int i=0; i < 2*n_aug_+1; i++) {
+      z_pred = z_pred + weights_(i) * Zsig.col(i);
+  }
+
+  //add measurement noise covariance matrix
+  MatrixXd R = MatrixXd(2,2);
+  R <<    std_laspx_*std_laspx_, 0,
+          0, std_laspy_*std_laspy_;
+
+  // read measurements
+  VectorXd z = VectorXd(2);
+  z << meas_package.raw_measurements_;
+
+  // Measurement model matrix (laser measures px and py directly)
+  MatrixXd H = MatrixXd(2, 5);
+  H << 1, 0, 0, 0, 0,
+       0, 1, 0, 0, 0;
+
+  VectorXd y = z - z_pred;
+  MatrixXd Ht = H.transpose();
+  MatrixXd S = H * P_ * Ht + R;
+  MatrixXd PHt = P_ * Ht;
+  MatrixXd K = PHt * S.inverse();
+
+  //new estimate
+  x_ = x_ + (K * y);
+  long x_size = x_.size();
+  MatrixXd I = MatrixXd::Identity(x_size, x_size);
+  P_ = (I - K * H) * P_;
 }
 
 /**
