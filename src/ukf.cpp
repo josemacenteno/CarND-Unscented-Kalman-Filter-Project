@@ -73,11 +73,9 @@ UKF::UKF() {
   ///* Weights of sigma points
   weights_ = VectorXd(2*n_aug_+1);;
   
-  double weight_0 = lambda_/(lambda_+n_aug_);
-  weights_(0) = weight_0;
+  weights_(0) = lambda_/(lambda_+n_aug_);
   for (int i=1; i<2*n_aug_+1; i++) {  //2n+1 weights
-    double weight = 0.5/(n_aug_+lambda_);
-    weights_(i) = weight;
+    weights_(i) = 0.5/(n_aug_+lambda_);
   }
 }
 
@@ -168,16 +166,17 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
   time_us_ = meas_package.timestamp_;
 
   if(delta_t > 0.0001){
-      Prediction(delta_t);
+    std::cout << "delta_t = " << delta_t << std::endl;
+    Prediction(delta_t);
   }
 
-  if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
-    UpdateRadar(meas_package);
-  }
+  // if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
+  //   UpdateRadar(meas_package);
+  // }
 
-  if (meas_package.sensor_type_ == MeasurementPackage::LASER){
-    UpdateLidar(meas_package);
-  }
+  // if (meas_package.sensor_type_ == MeasurementPackage::LASER){
+  //   UpdateLidar(meas_package);
+  // }
 }
 
 /**
@@ -314,7 +313,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
 
   You'll also need to calculate the radar NIS.
   */
-
+  
   //create matrix for sigma points in measurement space
   int n_z = 3;
   MatrixXd Zsig = MatrixXd(3, 2 * n_aug_ + 1);
@@ -396,13 +395,13 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   MatrixXd K = Tc * S.inverse();
 
   //residual
-  VectorXd z_diff = z - z_pred;
+  VectorXd z_err = z - z_pred;
 
   //angle normalization
-  while (z_diff(1)> M_PI) z_diff(1)-=2.*M_PI;
-  while (z_diff(1)<-M_PI) z_diff(1)+=2.*M_PI;
+  while (z_err(1)> M_PI) z_err(1)-=2.*M_PI;
+  while (z_err(1)<-M_PI) z_err(1)+=2.*M_PI;
 
   //update state mean and covariance matrix
-  x_ = x_ + K * z_diff;
+  x_ = x_ + K * z_err;
   P_ = P_ - K*S*K.transpose();
 }
