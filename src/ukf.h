@@ -67,7 +67,7 @@ public:
   ///* Sigma point spreading parameter
   double lambda_;
 
-  double n_sigma_p;
+  int n_sigma_p;
 
   ///* the current NIS for radar
   double NIS_radar_;
